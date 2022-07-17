@@ -1,0 +1,324 @@
+var _stages = [];
+var _tutors=[];
+
+_type_boss_id=Param._type_boss_id;//7054819633785283879
+_type_tutor_id=Param._type_tutor_id;//5703809445382982252
+_type_hr_id=Param._type_hr_id;//7054819616329579839
+//alert(_type_boss_id+' / '+_type_tutor_id+' / '+ _type_hr_id);
+_array_of_adaptations = XQuery("for $elem in career_reserves where $elem/position_type='adaptation' and $elem/status='active' and $elem/code='' return $elem"); //Запрашиваем из каталога адаптаций всех новичков
+
+
+
+function CreateMessage(id_person_type_role,role_fullname,cp_role_id, person_fullnome,active_col_name_stage)
+{
+	_Text='';
+	_new_object_data = OpenNewDoc('x-local://wtv/wtv_object_data.xmd');
+	_new_object_data.TopElem.object_data_type_id=7074844636180584873;
+	_new_object_data.TopElem.status_id='active';
+	_new_object_data.TopElem.create_date=ParseDate(Date());
+	_new_object_data.TopElem.start_date=ParseDate(Date());
+	_new_object_data.TopElem.object_type='collaborator';
+	_new_object_data.TopElem.object_id=OptInt(id_person_type_role);//id сотрудника в сообщении
+	_new_object_data.TopElem.object_name=role_fullname;//ФИО сотрудника
+	_new_object_data.TopElem.sec_object_type='career_reserve';
+	_new_object_data.TopElem.sec_object_id=OptInt(cp_role_id);//карточка адаптации в которой прошло изменение
+	_new_object_data.TopElem.data_str=global_settings.settings.portal_base_url+'_wt/doc_type/custom_web_template_id/6894638213664032915/doc_id/7042598874912132504';
+	_new_object_data.TopElem.comment=person_fullnome+' перешел на новый этап: '+active_col_name_stage+'. Для Вас открыты новые задачи.';
+	_Text+=person_fullnome+' перешел на новый этап: '+active_col_name_stage+'. Для Вас открыты новые задачи.';
+	_Text+=' Для перехода к задаче используйте ссылку: '+global_settings.settings.portal_base_url+'_wt/doc_type/custom_web_template_id/6894638213664032915/doc_id/7042598874912132504/cr/'+cp_role_id;
+	_new_object_data.BindToDb();
+	_new_object_data.Save();
+	//alert('_Text '+_Text);
+	if(tools.open_doc(id_person_type_role).TopElem.email!=undefined)
+	created_message = tools.create_notification( 'adpts_message', Int(id_person_type_role), _Text );
+	
+	
+	
+}
+
+
+
+
+try{
+
+	for (_adapt in _array_of_adaptations) 									
+	{	
+		//_adapt.id - карточка адаптации
+		//alert(_adapt.person_fullname);
+		doc_col=tools.open_doc(_adapt.id);
+		te_doc_col=doc_col.TopElem;
+		
+		_stages_active = ArraySelect(te_doc_col.tasks, 'This.type == "stage" && This.status=="active"'); 	//Запоминаем в массив все ID этапов нового сотрудника
+		//alert('_stages '+tools.array_to_text(_stages,'json'));
+		for(step in _stages_active)
+		{
+			active_col_name_stage=step.name;
+			//alert(step.name+' / '+step.status);
+			
+		}
+		
+		
+		for(tutor in te_doc_col.tutors)//Находим программы сопровождения для HR, наставника и Руковдителя
+			
+			{
+				
+				//HR
+				if(OptInt(tutor.boss_type_id)==OptInt(_type_hr_id))
+				{
+					//ищем программу HR
+					_hr_id=OptInt(tutor.person_id);
+					//alert(OptInt(tutor.person_id))
+					cp_hr=ArrayOptFirstElem(XQuery("for $elem in career_reserves where $elem/code='_hr_to_' and $elem/person_id="+_hr_id+"  return $elem"));
+					if(cp_hr!=undefined)
+					{
+						//alert('Наставник hr '+cp_hr.person_fullname);
+						doc_hr=tools.open_doc(OptInt(cp_hr.id));
+						te_doc_hr=doc_hr.TopElem;
+						//два варианта 
+						//1. в плане сопровождения есть этапы
+						//2. в палане сопровождения есть только задачи
+						
+						is_stages_hr=ArraySelect(te_doc_hr.tasks, 'type == "stage"');
+
+						if(ArrayCount(is_stages_hr)>0)//Когда в программе сопровождения есть этапы
+						{
+							
+							for(step_hr in is_stages_hr)
+							{
+								
+								if(StrContains(step_hr.name, active_col_name_stage,true) && step_hr.status=='plan')
+								{
+									id_hr_st_to_active=step_hr.id;
+									tasks_to_change_hr=ArraySelect(te_doc_hr.tasks, 'This.parent_task_id == id_hr_st_to_active');
+									//alert(step_hr.name+' / '+step_hr.status);
+									step_hr.status='active';
+									//для всех задач в этапе меняем статус на "В работе"
+									 for(task_hr in tasks_to_change_hr)
+									 {
+										task_hr.status='active';
+										doc_hr.Save(); 
+										//alert('Статус для этапа Hr изменен');	
+									 }
+										
+									
+									try
+									{
+										
+										CreateMessage(_hr_id,cp_hr.person_fullname,cp_hr.id, _adapt.person_fullname,active_col_name_stage);
+	
+									}
+									catch(erHrMsg){alert(erHrMsg);}	
+									
+								}
+								
+								
+								
+									
+							}
+							doc_hr.Save();
+						}
+						//Когда только задачи
+						else
+						{
+							
+							for(step_hr in te_doc_hr.tasks)
+							{
+								if(StrContains(step_hr.name, active_col_name_stage,true) && step_hr.status=='plan' )
+								{
+									step_hr.status='active';
+									doc_hr.Save();
+									//alert('стутас задачи в программе hr изменился на В работе');
+									
+									try
+									{
+										
+										CreateMessage(_hr_id,cp_hr.person_fullname,cp_boss.id, _adapt.person_fullname,active_col_name_stage);
+						
+									}
+									catch(erHrMsg){alert(erHrMsg);}	
+								}
+									
+							}
+						}
+
+					}
+					
+				}
+				
+				//Руководитель
+				if(OptInt(tutor.boss_type_id)==OptInt(_type_boss_id))
+				{
+					//ищем программу Руковдителя
+					_boss_id=OptInt(tutor.person_id);
+					//alert(OptInt(tutor.person_id))
+					cp_boss=ArrayOptFirstElem(XQuery("for $elem in career_reserves where $elem/code='_boss_to_' and $elem/person_id="+_boss_id+"  return $elem"));
+					if(cp_boss!=undefined)
+					{
+						//alert('Руководитель '+cp_boss.person_fullname);
+						doc_boss=tools.open_doc(OptInt(cp_boss.id));
+						te_doc_boss=doc_boss.TopElem;
+						//два варианта 
+						//1. в плане сопровождения есть этапы
+						//2. в палане сопровождения есть только задачи
+						
+						is_stages_boss=ArraySelect(te_doc_boss.tasks, 'type == "stage"');
+
+						if(ArrayCount(is_stages_boss)>0)//Когда в программе сопровождения есть этапы
+						{
+							
+							for(step_boss in is_stages_boss)
+							{
+								
+								if(StrContains(step_boss.name, active_col_name_stage,true)  && step_boss.status=='plan' )
+								{
+									id_boss_st_to_active=step_boss.id;
+									tasks_to_change_boss=ArraySelect(te_doc_boss.tasks, 'This.parent_task_id == id_boss_st_to_active');
+									//alert(step_boss.name+' / '+step_boss.status);
+									step_boss.status='active';
+									//для всех задач в этапе меняем статус на "В работе"
+									 for(task_boss in tasks_to_change_boss)
+									 {
+										task_boss.status='active';
+										doc_boss.Save(); 
+										 //alert('Статус для этапа Руководителя изменен');	
+									 }
+										
+									
+									
+									
+								}
+								
+								try
+								{
+									
+									CreateMessage(_boss_id,cp_boss.person_fullname,cp_boss.id, _adapt.person_fullname,active_col_name_stage);
+
+					
+								}
+								catch(er){}
+								
+									
+							}
+							doc_boss.Save();
+						}
+						//Когда только задачи
+						else
+						{
+							
+							for(step_boss in te_doc_boss.tasks)
+							{
+								if(StrContains(step_boss.name, active_col_name_stage,true) && step_boss.status=='plan' )
+								{
+									step_boss.status='active';
+									doc_boss.Save();
+									//alert('стутас задачи в программе hr изменился на В работе');
+									try
+									{
+										
+										CreateMessage(_boss_id,cp_boss.person_fullname,cp_boss.id, _adapt.person_fullname,active_col_name_stage);
+									}
+									catch(er){}	
+									
+								}
+								
+							}
+						}
+						
+
+
+					}
+					
+						
+				}
+				
+				//Наставник
+				if(OptInt(tutor.boss_type_id)==OptInt(_type_tutor_id))
+				{
+					//ищем программу наставника
+					_tutor_id=OptInt(tutor.person_id);
+					//alert(OptInt(tutor.person_id))
+					cp_tutor=ArrayOptFirstElem(XQuery("for $elem in career_reserves where $elem/code='_tutor_to_' and $elem/person_id="+_tutor_id+"  return $elem"));
+					if(cp_tutor!=undefined)
+					{
+						//alert('Наставник  '+cp_tutor.person_fullname);
+						doc_tutor=tools.open_doc(OptInt(cp_tutor.id));
+						te_doc_tutor=doc_tutor.TopElem;
+						//два варианта 
+						//1. в плане сопровождения есть этапы
+						//2. в палане сопровождения есть только задачи
+						
+						is_stages_tutor=ArraySelect(te_doc_tutor.tasks, 'type == "stage"');
+
+						if(ArrayCount(is_stages_tutor)>0)//Когда в программе сопровождения есть этапы
+						{
+							
+							for(step_tutor in is_stages_tutor)
+							{
+								//alert('условие сравнения')
+								if(StrContains(step_tutor.name, active_col_name_stage,true) && step_tutor.status=='plan' )
+								{
+									id_tutor_st_to_active=step_tutor.id;
+									tasks_to_change_tutor=ArraySelect(te_doc_tutor.tasks, 'This.parent_task_id == id_tutor_st_to_active');
+									//alert(step_tutor.name+' / '+step_tutor.status);
+									step_tutor.status='active';
+									//для всех задач в этапе меняем статус на "В работе"
+									 for(task_tutor in tasks_to_change_tutor)
+									 {
+										task_tutor.status='active';
+										doc_tutor.Save(); 
+										//alert('Статус для этапа Наставника изменен');	
+									 }
+										
+									try
+									{
+										
+										CreateMessage(_tutor_id,cp_tutor.person_fullname,cp_tutor.id, _adapt.person_fullname,active_col_name_stage);
+									}
+									catch(erTMsg){}
+									
+									
+								}
+								
+									
+							}
+							doc_tutor.Save();
+						}
+						//Когда только задачи
+						else
+						{
+							
+							for(step_tutor in te_doc_tutor.tasks)
+							{
+								if(StrContains(step_tutor.name, active_col_name_stage,true) && step_tutor.satus=='plan')
+								{
+									step_tutor.status='active';
+									doc_hr.Save();
+									//alert('стутас задачи в программе Наставника изменился на В работе');
+									
+									try
+									{
+										
+										CreateMessage(_tutor_id,cp_tutor.person_fullname,cp_tutor.id, _adapt.person_fullname,active_col_name_stage);
+						
+									}
+									catch(erTMsg){}
+									
+								}
+									
+							}
+						}
+						
+
+
+					}
+					
+				}
+				
+				
+				
+			}
+		
+
+	}
+}
+catch(AllErr){alert(AllErr);}
