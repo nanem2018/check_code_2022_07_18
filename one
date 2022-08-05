@@ -7,7 +7,7 @@ _type_hr_id=Param._type_hr_id;//7054819616329579839
 //alert(_type_boss_id+' / '+_type_tutor_id+' / '+ _type_hr_id);
 _array_of_adaptations = XQuery("for $elem in career_reserves where $elem/position_type='adaptation' and $elem/status='active' and $elem/code='' return $elem"); //Запрашиваем из каталога адаптаций всех новичков
 
-
+//space
 
 function CreateMessage(id_person_type_role,role_fullname,cp_role_id, person_fullnome,active_col_name_stage)
 {
